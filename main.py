@@ -30,3 +30,28 @@ def list_posts(
         return {"data": results, "query": query}
 
     return {"data": BLOG_POST}
+
+
+@app.get("/posts/{post_id}")
+def get_post(
+    post_id: int,
+    include_content: str | None = Query(
+        default=None, description="Booleano para saber si incluir el contenido o no"
+    ),
+):
+
+    for post in BLOG_POST:
+        if post["id"] == post_id:
+
+            if include_content:
+
+                if include_content.lower() == "false":
+
+                    copy_post = post.copy()
+                    del copy_post["Content"]
+
+                    return {"data": copy_post}
+
+            return {"data": post}
+
+    return {"error": "Post no encontrado"}
