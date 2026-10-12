@@ -25,7 +25,12 @@ def list_posts(
 ):
 
     if query:
-        results = [post for post in BLOG_POST if query.lower() in post["title"].lower()]
+        results = [
+            post
+            for post in BLOG_POST
+            if query.lower() in post["title"].lower()
+            or query.lower() in post["Content"]
+        ]
 
         return {"data": results, "query": query}
 
@@ -39,10 +44,16 @@ def get_post(
         default=None, description="Booleano para saber si incluir el contenido o no"
     ),
 ):
+    """
+    Ruta para encontrar un post mediante su id
+    """
 
     for post in BLOG_POST:
+
+        # Buscamos el post por id unico
         if post["id"] == post_id:
 
+            # Validar si se quiere mostrar o no el content
             if include_content:
 
                 if include_content.lower() == "false":
@@ -54,4 +65,5 @@ def get_post(
 
             return {"data": post}
 
+    # Error en caso no se logre encontrar un post
     return {"error": "Post no encontrado"}
