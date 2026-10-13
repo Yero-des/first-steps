@@ -40,8 +40,8 @@ def list_posts(
 @app.get("/posts/{post_id}")
 def get_post(
     post_id: int,
-    include_content: str | None = Query(
-        default=None, description="Booleano para saber si incluir el contenido o no"
+    include_content: bool = Query(
+        default=True, description="Booleano para saber si incluir el contenido o no"
     ),
 ):
     """
@@ -54,20 +54,13 @@ def get_post(
         if post["id"] == post_id:
 
             # Validar si se quiere mostrar o no el content
-            if include_content:
+            if not include_content:
+                copy_post = post.copy()
+                del copy_post["Content"]
 
-                if include_content.lower() == "false":
-
-                    copy_post = post.copy()
-                    del copy_post["Content"]
-
-                    return {"data": copy_post}
+                return {"data": copy_post}
 
             return {"data": post}
 
     # Error en caso no se logre encontrar un post
     return {"error": "Post no encontrado"}
-
-
-# Esto es una prueba
-# Esto es otra prueba 2
