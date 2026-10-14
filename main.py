@@ -83,3 +83,6 @@ def create_post(post: dict = Body(...)):
     BLOG_POST.append(new_post)
 
     return {"message": "Post Creado", "data": new_post}
+
+
+# Comentario de 14/10
