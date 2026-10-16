@@ -1,4 +1,7 @@
+from typing import Optional
+
 from fastapi import Body, FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="Mini Blog")
 
@@ -13,10 +16,42 @@ BLOG_POST = [
 ]
 
 
+class PostBase(BaseModel):
+    title: str
+    content: Optional[str] = "Contenido no disponible"
+
+
+class PostCreate(BaseModel):
+    title: str = Field(
+        ...,
+        min_length=3,
+        max_length=100,
+        description="Titulo del post (mínimo 3 caracteres, maximo 100)",
+        examples=["Mi primer post con FastAPI"],
+    )
+
+    content: Optional[str] = Field(
+        default="Contenido no disponible",
+        min_length=10,
+        description="Contenido del post (mínimo 10 caracteres)",
+        examples=["Este es un contenido valido con 10 caracteres o mas"],
+    )
+
+
+class PostUpdate(BaseModel):
+    title: str
+    content: Optional[str] = None
+
+
 @app.get("/")
 def home():
     json = {"message": "Bienvenidos a Mini Blog por Yeromi", "name": "Yeromi"}
     return json
+
+
+@app.get("/section")
+def section():
+    return {"message": "Bienvenido a mi nueva sección"}
 
 
 @app.get("/posts")
@@ -67,18 +102,12 @@ def get_post(
 
 
 @app.post("/posts")
-def create_post(post: dict = Body(...)):
+def create_post(post: PostCreate):
     """
-    Crear un post mediante Body
+    Crear un post mediante Pydantic
     """
-    if "title" not in post or "content" not in post:
-        return {"error", "Title y content son requeridos"}
-
-    if not str(post["title"]).strip():
-        return {"error": "Title no puede estar vacío"}
-
     new_id = (BLOG_POST[-1]["id"] + 1) if BLOG_POST else 1
-    new_post = {"id": new_id, "title": post["title"], "content": post["content"]}
+    new_post = {"id": new_id, "title": post.title, "content": post.content}
 
     BLOG_POST.append(new_post)
 
@@ -86,13 +115,14 @@ def create_post(post: dict = Body(...)):
 
 
 @app.put("/posts/{post_id}")
-def update_post(post_id: int, data: dict = Body(...)):
+def update_post(post_id: int, data: PostUpdate):
     for post in BLOG_POST:
         if post["id"] == post_id:
-            if "title" in data:
-                post["title"] = data["title"]
-            if "content" in data:
-                post["content"] = data["content"]
+            playload = data.model_dump(exclude_unset=True)
+            if "title" in playload:
+                post["title"] = playload["title"]
+            if "content" in playload:
+                post["content"] = playload["content"]
 
             return {"message": "Post actualizado", "data": post}
 
