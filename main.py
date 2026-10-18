@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -20,7 +20,7 @@ BAD_WORD = ["fuck", "wtf", "retard", "omg", "xxx", "porn"]
 
 class PostBase(BaseModel):
     title: str
-    content: Optional[str] = "Contenido no disponible"
+    content: str
 
 
 class PostCreate(BaseModel):
@@ -91,23 +91,23 @@ def list_posts(
             post
             for post in BLOG_POST
             if query.lower() in post["title"].lower()
-            or query.lower() in post["content"]
+            or query.lower() in post["content"].lower()
         ]
 
     return BLOG_POST
 
 
-@app.get("/posts/{post_id}")
+@app.get(
+    "/posts/{post_id}",
+    response_model=Union[PostPublic, PostSummary],
+    response_description="Post encontrado",
+)
 def get_post(
     post_id: int,
     include_content: bool = Query(
         default=True, description="Booleano para saber si incluir el contenido o no"
     ),
 ):
-    """
-    Ruta para encontrar un post mediante su id
-    """
-
     for post in BLOG_POST:
 
         # Buscamos el post por id unico
@@ -115,18 +115,15 @@ def get_post(
 
             # Validar si se quiere mostrar o no el content
             if not include_content:
-                copy_post = post.copy()
-                del copy_post["content"]
+                return {"id": post["id"], "title": post["title"]}
 
-                return {"data": copy_post}
-
-            return {"data": post}
+            return post
 
     # Error en caso no se logre encontrar un post
-    return {"error": "Post no encontrado"}
+    return HTTPException(status_code=404, detail="Post no encontrado")
 
 
-@app.post("/posts")
+@app.post("/posts", response_description="Post Creado", response_model=PostPublic)
 def create_post(post: PostCreate):
     """
     Crear un post mediante Pydantic
@@ -136,10 +133,10 @@ def create_post(post: PostCreate):
 
     BLOG_POST.append(new_post)
 
-    return {"message": "Post Creado", "data": new_post}
+    return new_post
 
 
-@app.put("/posts/{post_id}")
+@app.put("/posts/{post_id}", response_model=PostPublic)
 def update_post(post_id: int, data: PostUpdate):
     for post in BLOG_POST:
         if post["id"] == post_id:
@@ -149,7 +146,7 @@ def update_post(post_id: int, data: PostUpdate):
             if "content" in playload:
                 post["content"] = playload["content"]
 
-            return {"message": "Post actualizado", "data": post}
+            return post
 
     raise HTTPException(status_code=404, detail="Post no encontrado")
 
