@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 app = FastAPI(title="Mini Blog")
 
@@ -14,6 +14,8 @@ BLOG_POST = [
     },
     {"id": 3, "title": "Django vs FastAPI", "content": "FastAPI es mas rapido"},
 ]
+
+BAD_WORD = ["fuck", "wtf", "retard", "omg", "xxx", "porn"]
 
 
 class PostBase(BaseModel):
@@ -37,10 +39,35 @@ class PostCreate(BaseModel):
         examples=["Este es un contenido valido con 10 caracteres o mas"],
     )
 
+    @field_validator("title")
+    @classmethod
+    def not_allowed_title(cls, value: str) -> str:
+        for word in BAD_WORD:
+            if word in value.lower():
+                raise ValueError(f"El titulo no puede contener la palabra: '{word}'")
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def not_allowed_content(cls, value: str) -> str:
+        for word in BAD_WORD:
+            if word in value.lower():
+                raise ValueError(f"El contenido no puede contener la palabra: '{word}'")
+        return value
+
 
 class PostUpdate(BaseModel):
     title: str
     content: Optional[str] = None
+
+
+class PostPublic(PostBase):
+    id: int
+
+
+class PostSummary(BaseModel):
+    id: int
+    title: str
 
 
 @app.get("/")
@@ -54,22 +81,20 @@ def section():
     return {"message": "Bienvenido a mi nueva sección"}
 
 
-@app.get("/posts")
+@app.get("/posts", response_model=List[PostPublic])
 def list_posts(
     query: str | None = Query(default=None, description="Texto para buscar por titulo")
 ):
 
     if query:
-        results = [
+        return [
             post
             for post in BLOG_POST
             if query.lower() in post["title"].lower()
             or query.lower() in post["content"]
         ]
 
-        return {"data": results, "query": query}
-
-    return {"data": BLOG_POST}
+    return BLOG_POST
 
 
 @app.get("/posts/{post_id}")
