@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 
 from fastapi import Body, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 app = FastAPI(title="Mini Blog")
 
@@ -18,9 +18,37 @@ BLOG_POST = [
 BAD_WORD = ["fuck", "wtf", "retard", "omg", "xxx", "porn"]
 
 
+class Tag(BaseModel):
+    name: str = Field(
+        ...,
+        min_length=2,
+        max_length=30,
+        description="Nombre de la etiqueta",
+        examples=["Javascript"],
+    )
+
+
+class Author(BaseModel):
+    name: str = Field(
+        ...,
+        min_length=2,
+        max_length=50,
+        description="Autor del post",
+        examples=["Yeromi"],
+    )
+    email: EmailStr = Field(
+        ..., description="Email del autor", examples=["123@example.com"]
+    )
+    age: int = Field(
+        ..., description="Edad del autor", gt=0, lt=100, examples=[22, 10, 50]
+    )
+
+
 class PostBase(BaseModel):
     title: str
     content: str
+    tags: Optional[List[Tag]] = []
+    author: Optional[Author] = None
 
 
 class PostCreate(BaseModel):
@@ -38,6 +66,9 @@ class PostCreate(BaseModel):
         description="Contenido del post (mínimo 10 caracteres)",
         examples=["Este es un contenido valido con 10 caracteres o mas"],
     )
+
+    tags: Optional[List[Tag]] = []
+    author: Optional[Author] = None
 
     @field_validator("title")
     @classmethod
@@ -81,7 +112,7 @@ def section():
     return {"message": "Bienvenido a mi nueva sección"}
 
 
-@app.get("/posts", response_model=List[PostPublic])
+@app.get("/posts", response_model=List[PostPublic], response_model_exclude_none=True)
 def list_posts(
     query: str | None = Query(default=None, description="Texto para buscar por titulo")
 ):
@@ -123,20 +154,31 @@ def get_post(
     return HTTPException(status_code=404, detail="Post no encontrado")
 
 
-@app.post("/posts", response_description="Post Creado", response_model=PostPublic)
+@app.post("/posts", response_model=PostPublic, response_description="Post Creado (OK)")
 def create_post(post: PostCreate):
     """
     Crear un post mediante Pydantic
     """
     new_id = (BLOG_POST[-1]["id"] + 1) if BLOG_POST else 1
-    new_post = {"id": new_id, "title": post.title, "content": post.content}
+    new_post = {
+        "id": new_id,
+        "title": post.title,
+        "content": post.content,
+        "author": post.author.model_dump() if post.author else None,
+        "tags": [tag.model_dump() for tag in post.tags],
+    }
 
     BLOG_POST.append(new_post)
 
     return new_post
 
 
-@app.put("/posts/{post_id}", response_model=PostPublic)
+@app.put(
+    "/posts/{post_id}",
+    response_model=PostPublic,
+    response_description="Post Actualizado (OK)",
+    response_model_exclude_none=True,
+)
 def update_post(post_id: int, data: PostUpdate):
     for post in BLOG_POST:
         if post["id"] == post_id:
