@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Path, Query
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 app = FastAPI(title="Mini Blog")
@@ -114,16 +114,18 @@ def section():
 
 @app.get("/posts", response_model=List[PostPublic], response_model_exclude_none=True)
 def list_posts(
-    query: str | None = Query(default=None, description="Texto para buscar por titulo")
+    query: Optional[str] = Query(
+        default=None,
+        description="Texto para buscar por titulo",
+        alias="search",
+        min_length=3,
+        max_length=50,
+        pattern=r"^[a-zA-Z]+$",
+    )
 ):
 
     if query:
-        return [
-            post
-            for post in BLOG_POST
-            if query.lower() in post["title"].lower()
-            or query.lower() in post["content"].lower()
-        ]
+        return [post for post in BLOG_POST if query.lower() in post["title"].lower()]
 
     return BLOG_POST
 
@@ -134,7 +136,13 @@ def list_posts(
     response_description="Post encontrado",
 )
 def get_post(
-    post_id: int,
+    post_id: int = Path(
+        ...,
+        ge=1,
+        title="ID del post",
+        description="Identificador entero del post. Debe ser mayor a 1",
+        example=1,
+    ),
     include_content: bool = Query(
         default=True, description="Booleano para saber si incluir el contenido o no"
     ),
@@ -151,7 +159,7 @@ def get_post(
             return post
 
     # Error en caso no se logre encontrar un post
-    return HTTPException(status_code=404, detail="Post no encontrado")
+    raise HTTPException(status_code=404, detail="Post no encontrado")
 
 
 @app.post("/posts", response_model=PostPublic, response_description="Post Creado (OK)")
