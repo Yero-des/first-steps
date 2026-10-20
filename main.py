@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from fastapi import Body, FastAPI, HTTPException, Path, Query
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -13,6 +13,31 @@ BLOG_POST = [
         "content": "Mi segundo post con fastAPI",
     },
     {"id": 3, "title": "Django vs FastAPI", "content": "FastAPI es mas rapido"},
+    {
+        "id": 4,
+        "title": "FastAPI y APIs REST",
+        "content": "FastAPI facilita la creación de APIs REST",
+    },
+    {
+        "id": 5,
+        "title": "Validación de datos",
+        "content": "Con FastAPI puedes validar entradas con Pydantic",
+    },
+    {
+        "id": 6,
+        "title": "Documentación automática",
+        "content": "FastAPI genera Swagger y Redoc al instante",
+    },
+    {
+        "id": 7,
+        "title": "Microservicios con FastAPI",
+        "content": "Es ideal para construir microservicios ligeros",
+    },
+    {
+        "id": 8,
+        "title": "Deploy sencillo",
+        "content": "FastAPI se despliega fácilmente en producción",
+    },
 ]
 
 BAD_WORD = ["fuck", "wtf", "retard", "omg", "xxx", "porn"]
@@ -121,13 +146,32 @@ def list_posts(
         min_length=3,
         max_length=50,
         pattern=r"^[a-zA-Z]+$",
-    )
+    ),
+    limit: int = Query(
+        default=10, ge=1, le=50, description="Número de resultados (1-50)"
+    ),
+    offset: int = Query(
+        default=0, ge=0, description="Elementos a saltar antes de empezar la lista"
+    ),
+    order_by: Literal["id", "title"] = Query(
+        default="id",
+        description="Campo de orden",
+    ),
+    direction: Literal["asc", "desc"] = Query(
+        default="asc", description="Dirección de orden"
+    ),
 ):
 
-    if query:
-        return [post for post in BLOG_POST if query.lower() in post["title"].lower()]
+    results = BLOG_POST
 
-    return BLOG_POST
+    if query:
+        results = [post for post in results if query.lower() in post["title"].lower()]
+
+    results = sorted(
+        results, key=lambda post: post[order_by], reverse=(direction == "desc")
+    )
+
+    return results[offset : offset + limit]
 
 
 @app.get(
