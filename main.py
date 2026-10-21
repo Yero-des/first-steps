@@ -1,3 +1,4 @@
+from math import ceil
 from typing import List, Literal, Optional, Union
 
 from fastapi import Body, FastAPI, HTTPException, Path, Query
@@ -37,6 +38,58 @@ BLOG_POST = [
         "id": 8,
         "title": "Deploy sencillo",
         "content": "FastAPI se despliega fácilmente en producción",
+    },
+    {"id": 9, "title": "Hola desde FastAPI", "content": "Mi primer post con fastAPI"},
+    {"id": 10, "title": "Django vs FastAPI", "content": "FastAPI es mas rapido"},
+    {
+        "id": 11,
+        "title": "FastAPI y APIs REST",
+        "content": "FastAPI facilita la creación de APIs REST",
+    },
+    {
+        "id": 12,
+        "title": "Validación de datos",
+        "content": "Con FastAPI puedes validar entradas con Pydantic",
+    },
+    {
+        "id": 13,
+        "title": "Documentación automática",
+        "content": "FastAPI genera Swagger y Redoc al instante",
+    },
+    {
+        "id": 14,
+        "title": "Microservicios con FastAPI",
+        "content": "Es ideal para construir microservicios ligeros",
+    },
+    {
+        "id": 15,
+        "title": "Deploy sencillo",
+        "content": "FastAPI se despliega fácilmente en producción",
+    },
+    {
+        "id": 16,
+        "title": "Mi segundo post con FastAPI",
+        "content": "Mi segundo post con fastAPI",
+    },
+    {
+        "id": 17,
+        "title": "Mi segundo post con FastAPI",
+        "content": "Mi segundo post con fastAPI",
+    },
+    {
+        "id": 18,
+        "title": "Mi segundo post con FastAPI",
+        "content": "Mi segundo post con fastAPI",
+    },
+    {
+        "id": 19,
+        "title": "Mi segundo post con FastAPI",
+        "content": "Mi segundo post con fastAPI",
+    },
+    {
+        "id": 20,
+        "title": "Mi segundo post con FastAPI",
+        "content": "Mi segundo post con fastAPI",
     },
 ]
 
@@ -126,6 +179,19 @@ class PostSummary(BaseModel):
     title: str
 
 
+class PaginatedPost(BaseModel):
+    page: int
+    per_page: int
+    total: int
+    total_pages: int
+    has_prev: bool
+    has_next: bool
+    order_by: Literal["id", "title"]
+    direction: Literal["asc", "desc"]
+    search: Optional[str]
+    items: List[PostPublic]
+
+
 @app.get("/")
 def home():
     json = {"message": "Bienvenidos a Mini Blog por Yeromi", "name": "Yeromi"}
@@ -137,7 +203,7 @@ def section():
     return {"message": "Bienvenido a mi nueva sección"}
 
 
-@app.get("/posts", response_model=List[PostPublic], response_model_exclude_none=True)
+@app.get("/posts", response_model=PaginatedPost, response_model_exclude_none=True)
 def list_posts(
     query: Optional[str] = Query(
         default=None,
@@ -147,12 +213,10 @@ def list_posts(
         max_length=50,
         pattern=r"^[a-zA-Z]+$",
     ),
-    limit: int = Query(
+    per_page: int = Query(
         default=10, ge=1, le=50, description="Número de resultados (1-50)"
     ),
-    offset: int = Query(
-        default=0, ge=0, description="Elementos a saltar antes de empezar la lista"
-    ),
+    page: int = Query(default=1, ge=1, description="Numero de pagina"),
     order_by: Literal["id", "title"] = Query(
         default="id",
         description="Campo de orden",
@@ -167,11 +231,39 @@ def list_posts(
     if query:
         results = [post for post in results if query.lower() in post["title"].lower()]
 
+    total = len(results)
+    total_pages = ceil(total / per_page) if total > 0 else 0
+
+    if total_pages == 0:
+        current_page = 1
+    else:
+        current_page = min(page, total_pages)
+
     results = sorted(
         results, key=lambda post: post[order_by], reverse=(direction == "desc")
     )
 
-    return results[offset : offset + limit]
+    if total_pages == 0:
+        items = []
+    else:
+        start = (current_page - 1) * per_page
+        items = results[start : start + per_page]  # [10:20]
+
+    has_prev = current_page > 1
+    has_next = current_page < total_pages
+
+    return PaginatedPost(
+        page=current_page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages,
+        has_prev=has_prev,
+        has_next=has_next,
+        order_by=order_by,
+        direction=direction,
+        search=query,
+        items=items,
+    )
 
 
 @app.get(
@@ -198,9 +290,9 @@ def get_post(
 
             # Validar si se quiere mostrar o no el content
             if not include_content:
-                return {"id": post["id"], "title": post["title"]}
+                return PostSummary(id=post["id"], title=post["title"])
 
-            return post
+            return PostPublic(**post)
 
     # Error en caso no se logre encontrar un post
     raise HTTPException(status_code=404, detail="Post no encontrado")
