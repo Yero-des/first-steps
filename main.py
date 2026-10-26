@@ -5,7 +5,7 @@ from typing import List, Literal, Optional, Union
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from sqlalchemy import DateTime, Integer, String, Text, create_engine
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -278,32 +278,38 @@ def list_posts(
     direction: Literal["asc", "desc"] = Query(
         default="asc", description="Dirección de orden"
     ),
+    db: Session = Depends(get_db),
 ):
 
-    results = BLOG_POST
+    results = select(PostORM)
 
     query = query or text
 
     if query:
-        results = [post for post in results if query.lower() in post["title"].lower()]
+        results = results.where(PostORM.title.ilike(f"%{query}%"))
 
-    total = len(results)
+    total = db.scalar(select(func.count()).select_from(results.subquery())) or 0
     total_pages = ceil(total / per_page) if total > 0 else 0
 
-    if total_pages == 0:
-        current_page = 1
+    current_page = 1 if total_pages == 0 else min(page, total_pages)
+
+    if order_by == "id":
+        order_col = PostORM.id
     else:
-        current_page = min(page, total_pages)
+        order_col = func.lower(PostORM.title)
 
-    results = sorted(
-        results, key=lambda post: post[order_by], reverse=(direction == "desc")
+    results = results.order_by(
+        order_col.asc() if direction == "asc" else order_col.desc()
     )
+    # results = sorted(
+    #     results, key=lambda post: post[order_by], reverse=(direction == "desc")
+    # )
 
     if total_pages == 0:
-        items = []
+        items: List[PostORM] = []
     else:
         start = (current_page - 1) * per_page
-        items = results[start : start + per_page]  # [10:20]
+        items = db.execute(results.limit(per_page).offset(start)).scalars().all()
 
     has_prev = current_page > 1
     has_next = current_page < total_pages
