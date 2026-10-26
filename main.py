@@ -1,8 +1,50 @@
+import os
+from datetime import UTC, datetime
 from math import ceil
 from typing import List, Literal, Optional, Union
 
-from fastapi import Body, FastAPI, HTTPException, Path, Query
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from sqlalchemy import DateTime, Integer, String, Text, create_engine
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blog.db")
+print("Contectado a:", DATABASE_URL)
+
+engine_kwargs = {"echo": True, "future": True}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+SessionLocal = sessionmaker(
+    bind=engine, autoflush=False, autocommit=False, class_=Session
+)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class PostORM(Base):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(UTC))
+
+
+Base.metadata.create_all(bind=engine)  # dev
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 app = FastAPI(title="Mini Blog")
 
@@ -13,7 +55,12 @@ BLOG_POST = [
         "title": "Mi segundo post con FastAPI",
         "content": "Mi segundo post con fastAPI",
     },
-    {"id": 3, "title": "Django vs FastAPI", "content": "FastAPI es mas rapido"},
+    {
+        "id": 3,
+        "title": "Django vs FastAPI",
+        "content": "FastAPI es mas rapido",
+        "tags": [{"name": "Python"}, {"name": "fastapi"}, {"name": "django"}],
+    },
     {
         "id": 4,
         "title": "FastAPI y APIs REST",
@@ -173,6 +220,8 @@ class PostUpdate(BaseModel):
 class PostPublic(PostBase):
     id: int
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PostSummary(BaseModel):
     id: int
@@ -205,6 +254,11 @@ def section():
 
 @app.get("/posts", response_model=PaginatedPost, response_model_exclude_none=True)
 def list_posts(
+    text: Optional[str] = Query(
+        default=None,
+        deprecated=True,
+        description="Parámetro obsoleto, usa 'query o search' en su lugar.",
+    ),
     query: Optional[str] = Query(
         default=None,
         description="Texto para buscar por titulo",
@@ -227,6 +281,8 @@ def list_posts(
 ):
 
     results = BLOG_POST
+
+    query = query or text
 
     if query:
         results = [post for post in results if query.lower() in post["title"].lower()]
@@ -277,7 +333,7 @@ def get_post(
         ge=1,
         title="ID del post",
         description="Identificador entero del post. Debe ser mayor a 1",
-        example=1,
+        examples=[1],
     ),
     include_content: bool = Query(
         default=True, description="Booleano para saber si incluir el contenido o no"
@@ -298,23 +354,43 @@ def get_post(
     raise HTTPException(status_code=404, detail="Post no encontrado")
 
 
-@app.post("/posts", response_model=PostPublic, response_description="Post Creado (OK)")
-def create_post(post: PostCreate):
-    """
-    Crear un post mediante Pydantic
-    """
-    new_id = (BLOG_POST[-1]["id"] + 1) if BLOG_POST else 1
-    new_post = {
-        "id": new_id,
-        "title": post.title,
-        "content": post.content,
-        "author": post.author.model_dump() if post.author else None,
-        "tags": [tag.model_dump() for tag in post.tags],
-    }
+@app.get("/post/by-tags", response_model=List[PostPublic])
+def filter_by_tags(
+    tags: List[str] = Query(
+        ...,
+        min_length=1,
+        description="Una o mas etiquetas Ejemplo: ?tags=python&tags=fastapi",
+    )
+):
+    tags_lower = [tag.lower() for tag in tags]
 
-    BLOG_POST.append(new_post)
+    return [
+        post
+        for post in BLOG_POST
+        if any(tag["name"].lower() in tags_lower for tag in post.get("tags", []))
+    ]
 
-    return new_post
+
+@app.post(
+    "/posts",
+    response_model=PostPublic,
+    response_description="Post Creado (OK)",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_post(post: PostCreate, db: Session = Depends(get_db)):
+
+    new_post = PostORM(title=post.title, content=post.content)
+
+    try:
+        db.add(new_post)
+        db.commit()
+        db.refresh(
+            new_post
+        )  # Trae los valores de la base de datos, created_at, id, etc
+        return new_post
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error al crear el post")
 
 
 @app.put(
