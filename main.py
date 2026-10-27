@@ -216,16 +216,21 @@ class PostUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=3, max_length=100)
     content: Optional[str] = Field(None, min_length=10)
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PostPublic(PostBase):
     id: int
 
+    # Nos sirve para validar objetos
     model_config = ConfigDict(from_attributes=True)
 
 
 class PostSummary(BaseModel):
     id: int
     title: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedPost(BaseModel):
@@ -344,20 +349,22 @@ def get_post(
     include_content: bool = Query(
         default=True, description="Booleano para saber si incluir el contenido o no"
     ),
+    db: Session = Depends(get_db),
 ):
-    for post in BLOG_POST:
 
-        # Buscamos el post por id unico
-        if post["id"] == post_id:
+    post_find = select(PostORM).where(PostORM.id == post_id)
+    post = db.execute(post_find).scalar_one_or_none()
 
-            # Validar si se quiere mostrar o no el content
-            if not include_content:
-                return PostSummary(id=post["id"], title=post["title"])
+    # post = db.get(PostORM, post_id)
 
-            return PostPublic(**post)
+    if not post:
+        # Error en caso no se logre encontrar un post
+        raise HTTPException(status_code=404, detail="Post no encontrado")
 
-    # Error en caso no se logre encontrar un post
-    raise HTTPException(status_code=404, detail="Post no encontrado")
+    if include_content:
+        return PostPublic.model_validate(post, from_attributes=True)
+
+    return PostSummary.model_validate(post, from_attributes=True)
 
 
 @app.get("/post/by-tags", response_model=List[PostPublic])
@@ -405,25 +412,47 @@ def create_post(post: PostCreate, db: Session = Depends(get_db)):
     response_description="Post Actualizado (OK)",
     response_model_exclude_none=True,
 )
-def update_post(post_id: int, data: PostUpdate):
-    for post in BLOG_POST:
-        if post["id"] == post_id:
-            playload = data.model_dump(exclude_unset=True)
-            if "title" in playload:
-                post["title"] = playload["title"]
-            if "content" in playload:
-                post["content"] = playload["content"]
+def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
 
-            return post
+    # finder = select(PostORM).where(PostORM.id == post_id)
+    # post = db.execute(finder).scalar_one_or_none()
 
-    raise HTTPException(status_code=404, detail="Post no encontrado")
+    post = db.get(PostORM, post_id)
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+
+    playload = data.model_dump(exclude_unset=True)
+
+    try:
+        if "title" in playload:
+            post.title = playload["title"]
+
+        if "content" in playload:
+            post.content = playload["content"]
+
+        db.commit()
+        db.refresh(post)
+
+        return post
+
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error al actualizar el post")
 
 
 @app.delete("/posts/{post_id}", status_code=204)
-def delete_post(post_id: int):
-    for index, post in enumerate(BLOG_POST):
-        if post["id"] == post_id:
-            BLOG_POST.pop(index)
-            return
+def delete_post(post_id: int, db: Session = Depends(get_db)):
 
-    raise HTTPException(status_code=404, detail="Post no encontrado")
+    post = db.get(PostORM, post_id)
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not encontrado")
+
+    try:
+        db.delete(post)
+        db.commit()
+        return
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error al eliminar el post")
