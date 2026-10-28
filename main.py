@@ -422,15 +422,14 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
     if not post:
         raise HTTPException(status_code=404, detail="Post no encontrado")
 
-    playload = data.model_dump(exclude_unset=True)
+    updates = data.model_dump(exclude_unset=True)
+
+    for key, value in updates.items():
+        setattr(post, key, value)
 
     try:
-        if "title" in playload:
-            post.title = playload["title"]
 
-        if "content" in playload:
-            post.content = playload["content"]
-
+        db.add(post)
         db.commit()
         db.refresh(post)
 
