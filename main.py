@@ -5,8 +5,17 @@ from typing import List, Literal, Optional, Union
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import (
+    DateTime,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+    select,
+)
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blog.db")
@@ -28,6 +37,7 @@ class Base(DeclarativeBase):
 
 class PostORM(Base):
     __tablename__ = "posts"
+    __table_args__ = (UniqueConstraint("title", name="unique_post_title"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -47,98 +57,6 @@ def get_db():
 
 
 app = FastAPI(title="Mini Blog")
-
-BLOG_POST = [
-    {"id": 1, "title": "Hola desde FastAPI", "content": "Mi primer post con fastAPI"},
-    {
-        "id": 2,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-    {
-        "id": 3,
-        "title": "Django vs FastAPI",
-        "content": "FastAPI es mas rapido",
-        "tags": [{"name": "Python"}, {"name": "fastapi"}, {"name": "django"}],
-    },
-    {
-        "id": 4,
-        "title": "FastAPI y APIs REST",
-        "content": "FastAPI facilita la creación de APIs REST",
-    },
-    {
-        "id": 5,
-        "title": "Validación de datos",
-        "content": "Con FastAPI puedes validar entradas con Pydantic",
-    },
-    {
-        "id": 6,
-        "title": "Documentación automática",
-        "content": "FastAPI genera Swagger y Redoc al instante",
-    },
-    {
-        "id": 7,
-        "title": "Microservicios con FastAPI",
-        "content": "Es ideal para construir microservicios ligeros",
-    },
-    {
-        "id": 8,
-        "title": "Deploy sencillo",
-        "content": "FastAPI se despliega fácilmente en producción",
-    },
-    {"id": 9, "title": "Hola desde FastAPI", "content": "Mi primer post con fastAPI"},
-    {"id": 10, "title": "Django vs FastAPI", "content": "FastAPI es mas rapido"},
-    {
-        "id": 11,
-        "title": "FastAPI y APIs REST",
-        "content": "FastAPI facilita la creación de APIs REST",
-    },
-    {
-        "id": 12,
-        "title": "Validación de datos",
-        "content": "Con FastAPI puedes validar entradas con Pydantic",
-    },
-    {
-        "id": 13,
-        "title": "Documentación automática",
-        "content": "FastAPI genera Swagger y Redoc al instante",
-    },
-    {
-        "id": 14,
-        "title": "Microservicios con FastAPI",
-        "content": "Es ideal para construir microservicios ligeros",
-    },
-    {
-        "id": 15,
-        "title": "Deploy sencillo",
-        "content": "FastAPI se despliega fácilmente en producción",
-    },
-    {
-        "id": 16,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-    {
-        "id": 17,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-    {
-        "id": 18,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-    {
-        "id": 19,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-    {
-        "id": 20,
-        "title": "Mi segundo post con FastAPI",
-        "content": "Mi segundo post con fastAPI",
-    },
-]
 
 BAD_WORD = ["fuck", "wtf", "retard", "omg", "xxx", "porn"]
 
@@ -401,9 +319,18 @@ def create_post(post: PostCreate, db: Session = Depends(get_db)):
             new_post
         )  # Trae los valores de la base de datos, created_at, id, etc
         return new_post
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El titulo ya existe prueba con otro",
+        )
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error al crear el post")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al crear el post",
+        )
 
 
 @app.put(
@@ -420,7 +347,9 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
     post = db.get(PostORM, post_id)
 
     if not post:
-        raise HTTPException(status_code=404, detail="Post no encontrado")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post no encontrado"
+        )
 
     updates = data.model_dump(exclude_unset=True)
 
@@ -434,13 +363,15 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
     return post
 
 
-@app.delete("/posts/{post_id}", status_code=204)
+@app.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(post_id: int, db: Session = Depends(get_db)):
 
     post = db.get(PostORM, post_id)
 
     if not post:
-        raise HTTPException(status_code=404, detail="Post not encontrado")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not encontrado"
+        )
 
     db.delete(post)
     db.commit()
