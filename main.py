@@ -427,17 +427,11 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
     for key, value in updates.items():
         setattr(post, key, value)
 
-    try:
+    db.add(post)
+    db.commit()
+    db.refresh(post)
 
-        db.add(post)
-        db.commit()
-        db.refresh(post)
-
-        return post
-
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Error al actualizar el post")
+    return post
 
 
 @app.delete("/posts/{post_id}", status_code=204)
@@ -448,10 +442,6 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     if not post:
         raise HTTPException(status_code=404, detail="Post not encontrado")
 
-    try:
-        db.delete(post)
-        db.commit()
-        return
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Error al eliminar el post")
+    db.delete(post)
+    db.commit()
+    return
