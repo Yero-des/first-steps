@@ -7,6 +7,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -16,7 +17,14 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    relationship,
+    sessionmaker,
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blog.db")
 print("Contectado a:", DATABASE_URL)
@@ -35,6 +43,16 @@ class Base(DeclarativeBase):
     pass
 
 
+class AuthorORM(Base):
+    __tablename__ = "authors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+
+    posts: Mapped[List["PostORM"]] = relationship(back_populates="author")
+
+
 class PostORM(Base):
     __tablename__ = "posts"
     __table_args__ = (UniqueConstraint("title", name="unique_post_title"),)
@@ -43,6 +61,9 @@ class PostORM(Base):
     title: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(UTC))
+
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("authors.id"))
+    author: Mapped[Optional["AuthorORM"]] = relationship(back_populates="posts")
 
 
 Base.metadata.create_all(bind=engine)  # dev
