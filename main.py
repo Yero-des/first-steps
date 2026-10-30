@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from locale import normalize
 from math import ceil
 from typing import List, Literal, Optional, Union
 
@@ -23,8 +24,10 @@ from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     Session,
+    joinedload,
     mapped_column,
     relationship,
+    selectinload,
     sessionmaker,
 )
 
@@ -343,16 +346,29 @@ def filter_by_tags(
         ...,
         min_length=1,
         description="Una o mas etiquetas Ejemplo: ?tags=python&tags=fastapi",
-    )
+    ),
+    db: Session = Depends(get_db),
 ):
-    pass
-    # tags_lower = [tag.lower() for tag in tags]
+    normalize_tags_names = [tag.strip().lower() for tag in tags if tag.strip().lower()]
 
-    # return [
-    #     post
-    #     for post in BLOG_POST
-    #     if any(tag["name"].lower() in tags_lower for tag in post.get("tags", []))
-    # ]
+    if not normalize_tags_names:
+        return []
+
+    post_list = (
+        select(PostORM)
+        .options(
+            selectinload(PostORM.tags),  # Optimizar los post de tags para n + 1
+            joinedload(PostORM.author),  # Optimizar los authors de post JOIN
+        )
+        .where(
+            PostORM.tags.any(func.lower(TagORM.name).in_(normalize_tags_names))
+        )  # Filtra por etiquetas con un lower a la base de datos
+        .order_by(PostORM.id.asc())
+    )
+
+    posts = db.execute(post_list).scalars().all()
+
+    return posts
 
 
 @app.post(
@@ -363,7 +379,32 @@ def filter_by_tags(
 )
 def create_post(post: PostCreate, db: Session = Depends(get_db)):
 
-    new_post = PostORM(title=post.title, content=post.content)
+    author_obj = None
+    if post.author:
+
+        author_obj = db.execute(
+            select(AuthorORM).where(AuthorORM.email == post.author.email)
+        ).scalar_one_or_none()
+
+        if not author_obj:
+            author_obj = AuthorORM(name=post.author.name, email=post.author.email)
+
+            db.add(author_obj)
+            db.flush()
+
+    new_post = PostORM(title=post.title, content=post.content, author=author_obj)
+
+    for tag in post.tags:
+        tag_obj = db.execute(
+            select(TagORM).where(TagORM.name.ilike(tag.name))
+        ).scalar_one_or_none()
+
+        if not tag_obj:
+            tag_obj = TagORM(name=tag.name)
+            db.add(tag_obj)
+            db.flush()
+
+        new_post.tags.append(tag_obj)
 
     try:
         db.add(new_post)
