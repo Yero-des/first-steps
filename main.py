@@ -6,10 +6,12 @@ from typing import List, Literal, Optional, Union
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import (
+    Column,
     DateTime,
     ForeignKey,
     Integer,
     String,
+    Table,
     Text,
     UniqueConstraint,
     create_engine,
@@ -43,6 +45,14 @@ class Base(DeclarativeBase):
     pass
 
 
+post_tags = Table(
+    "post_tags",
+    Base.metadata,
+    Column("post_id", ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class AuthorORM(Base):
     __tablename__ = "authors"
 
@@ -51,6 +61,17 @@ class AuthorORM(Base):
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
 
     posts: Mapped[List["PostORM"]] = relationship(back_populates="author")
+
+
+class TagORM(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+
+    posts: Mapped[List["PostORM"]] = relationship(
+        secondary=post_tags, back_populates="tags", lazy="selectin"
+    )
 
 
 class PostORM(Base):
@@ -64,6 +85,13 @@ class PostORM(Base):
 
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("authors.id"))
     author: Mapped[Optional["AuthorORM"]] = relationship(back_populates="posts")
+
+    tags: Mapped[List[TagORM]] = relationship(
+        secondary=post_tags,
+        back_populates="posts",
+        lazy="selectin",  # Evita el n + 1
+        passive_deletes=True,
+    )
 
 
 Base.metadata.create_all(bind=engine)  # dev
@@ -91,6 +119,8 @@ class Tag(BaseModel):
         examples=["Javascript"],
     )
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class Author(BaseModel):
     name: str = Field(
@@ -103,9 +133,8 @@ class Author(BaseModel):
     email: EmailStr = Field(
         ..., description="Email del autor", examples=["123@example.com"]
     )
-    age: int = Field(
-        ..., description="Edad del autor", gt=0, lt=100, examples=[22, 10, 50]
-    )
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PostBase(BaseModel):
@@ -113,6 +142,8 @@ class PostBase(BaseModel):
     content: str
     tags: Optional[List[Tag]] = Field(default_factory=list)  # []
     author: Optional[Author] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PostCreate(BaseModel):
@@ -314,13 +345,14 @@ def filter_by_tags(
         description="Una o mas etiquetas Ejemplo: ?tags=python&tags=fastapi",
     )
 ):
-    tags_lower = [tag.lower() for tag in tags]
+    pass
+    # tags_lower = [tag.lower() for tag in tags]
 
-    return [
-        post
-        for post in BLOG_POST
-        if any(tag["name"].lower() in tags_lower for tag in post.get("tags", []))
-    ]
+    # return [
+    #     post
+    #     for post in BLOG_POST
+    #     if any(tag["name"].lower() in tags_lower for tag in post.get("tags", []))
+    # ]
 
 
 @app.post(
