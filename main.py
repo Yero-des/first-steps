@@ -4,6 +4,7 @@ from locale import normalize
 from math import ceil
 from typing import List, Literal, Optional, Union
 
+from dotenv import load_dotenv
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import (
@@ -31,8 +32,9 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blog.db")
-print("Contectado a:", DATABASE_URL)
 
 engine_kwargs = {"echo": True, "future": True}
 if DATABASE_URL.startswith("sqlite"):
