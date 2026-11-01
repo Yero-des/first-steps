@@ -193,6 +193,22 @@ class PostUpdate(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator("title")
+    @classmethod
+    def not_allowed_title(cls, value: str) -> str:
+        for word in BAD_WORD:
+            if word in value.lower():
+                raise ValueError(f"El titulo no puede contener la palabra: {word}")
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def not_allowed_content(cls, value: str) -> str:
+        for word in BAD_WORD:
+            if word in value.lower():
+                raise ValueError(f"El contenido no puede contener la palabra: '{word}'")
+        return value
+
 
 class PostPublic(PostBase):
     id: int
