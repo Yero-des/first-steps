@@ -1,113 +1,17 @@
-import os
-from datetime import UTC, datetime
-from locale import normalize
 from math import ceil
 from typing import List, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from sqlalchemy import (
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Table,
-    Text,
-    UniqueConstraint,
-    create_engine,
-    func,
-    select,
-)
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    Session,
-    joinedload,
-    mapped_column,
-    relationship,
-    selectinload,
-    sessionmaker,
-)
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blog.db")
-
-engine_kwargs = {"echo": True, "future": True}
-if DATABASE_URL.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-
-engine = create_engine(DATABASE_URL, **engine_kwargs)
-SessionLocal = sessionmaker(
-    bind=engine, autoflush=False, autocommit=False, class_=Session
-)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-post_tags = Table(
-    "post_tags",
-    Base.metadata,
-    Column("post_id", ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-)
-
-
-class AuthorORM(Base):
-    __tablename__ = "authors"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-
-    posts: Mapped[List["PostORM"]] = relationship(back_populates="author")
-
-
-class TagORM(Base):
-    __tablename__ = "tags"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(30), unique=True, index=True)
-
-    posts: Mapped[List["PostORM"]] = relationship(
-        secondary=post_tags, back_populates="tags", lazy="selectin"
-    )
-
-
-class PostORM(Base):
-    __tablename__ = "posts"
-    __table_args__ = (UniqueConstraint("title", name="unique_post_title"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    title: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(UTC))
-
-    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("authors.id"))
-    author: Mapped[Optional["AuthorORM"]] = relationship(back_populates="posts")
-
-    tags: Mapped[List[TagORM]] = relationship(
-        secondary=post_tags,
-        back_populates="posts",
-        lazy="selectin",  # Evita el n + 1
-        passive_deletes=True,
-    )
-
 
 Base.metadata.create_all(bind=engine)  # dev
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 app = FastAPI(title="Mini Blog")
