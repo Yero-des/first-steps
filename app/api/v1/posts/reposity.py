@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.main import delete_post
 from app.models import AuthorORM, PostORM, TagORM
 
 
@@ -136,6 +135,7 @@ class PostReposity:
             setattr(post, key, value)
 
         self.db.add(post)
+        self.db.flush()
         self.db.refresh(post)
 
         return post
