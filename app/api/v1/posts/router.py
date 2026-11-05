@@ -8,11 +8,21 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.posts import reposity
 from app.core.db import get_db
+from app.core.security import oauth2_scheme
 
 from .reposity import PostReposity
 from .schemas import PaginatedPost, PostCreate, PostPublic, PostSummary, PostUpdate
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+
+def get_fake_user():
+    return {"username": "ricardo", "role": "admin"}
+
+
+@router.get("/me")
+def read_me(user: dict = Depends(get_fake_user)):
+    return {"user": user}
 
 
 @router.get("", response_model=PaginatedPost, response_model_exclude_none=True)
@@ -208,3 +218,8 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al eliminar el post",
         )
+
+
+@router.get("/secure")
+def secure_endpoint(token: str = Depends(oauth2_scheme)):
+    return {"message": "Acceso con token", "token_recibido": token}
