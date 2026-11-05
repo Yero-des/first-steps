@@ -1,10 +1,11 @@
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI
 
 from app.api.v1.posts.router import router as post_router
 from app.core.db import Base, engine
-
-load_dotenv()
 
 
 def create_app() -> FastAPI:
