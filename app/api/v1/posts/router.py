@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.posts import reposity
 from app.core.db import get_db
-from app.core.security import oauth2_scheme
+from app.core.security import get_current_user, oauth2_scheme
 
 from .reposity import PostReposity
 from .schemas import PaginatedPost, PostCreate, PostPublic, PostSummary, PostUpdate
@@ -138,7 +138,11 @@ def get_post(
     response_description="Post Creado (OK)",
     status_code=status.HTTP_201_CREATED,
 )
-def create_post(post: PostCreate, db: Session = Depends(get_db)):
+def create_post(
+    post: PostCreate,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
 
     reposity = PostReposity(db)
 
