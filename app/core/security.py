@@ -15,6 +15,30 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
+def raise_not_authenticated():
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No autenticado",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def raise_expired_token():
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token expirado",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def raise_forbidden():
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos suficientes",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
     to_encode = data.copy()
@@ -35,28 +59,18 @@ def decode_token(token: str) -> dict:
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 
-    credentials_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No autenticado",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     try:
         payload = decode_token(token)
         sub: Optional[str] = payload.get("sub")
         username: Optional[str] = payload.get("username")
 
         if not sub or not username:
-            raise credentials_exc
+            raise raise_not_authenticated()
 
         return {"email": sub, "username": username}
 
     except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expirado",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise raise_expired_token()
 
     except InvalidTokenError:
-        raise credentials_exc
+        raise raise_not_authenticated()

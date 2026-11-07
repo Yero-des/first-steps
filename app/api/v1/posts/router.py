@@ -150,7 +150,7 @@ def create_post(
         new_post = reposity.create_post(
             title=post.title,
             content=post.content,
-            author=(post.author.model_dump() if post.author else None),
+            author=user,
             tags=[tag.model_dump() for tag in post.tags],
         )
         db.commit()
@@ -176,7 +176,12 @@ def create_post(
     response_description="Post Actualizado (OK)",
     response_model_exclude_none=True,
 )
-def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
+def update_post(
+    post_id: int,
+    data: PostUpdate,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
 
     repository = PostReposity(db)
     post = repository.get(post_id)
@@ -202,7 +207,9 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(post_id: int, db: Session = Depends(get_db)):
+def delete_post(
+    post_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user)
+):
 
     repository = PostReposity(db)
     post = repository.get(post_id)

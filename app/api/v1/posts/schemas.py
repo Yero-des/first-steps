@@ -58,7 +58,7 @@ class PostCreate(BaseModel):
     )
 
     tags: Optional[List[Tag]] = Field(default_factory=list)  # []
-    author: Optional[Author] = None
+    # author: Optional[Author] = None
 
     @field_validator("title")
     @classmethod
